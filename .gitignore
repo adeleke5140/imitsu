@@ -1,0 +1,8 @@
+node_modules/
+dist/
+imitsu.db
+vault.db
+.env
+*.db-journal
+*.db-wal
+*.db-shm
