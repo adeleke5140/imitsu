@@ -188,6 +188,19 @@ func (m AccountModel) handleFormKey(msg tea.KeyMsg) (AccountModel, tea.Cmd) {
 		if m.loading {
 			return m, nil
 		}
+		// Server pane modifies model directly, handle inline
+		if m.pane == PaneServer {
+			url := m.inputs[0].Value()
+			if url == "" {
+				m.err = "server URL is required"
+				return m, nil
+			}
+			m.client.Config.ServerURL = strings.TrimRight(url, "/")
+			m.client.SaveConfig()
+			m.message = fmt.Sprintf("server set to %s", m.client.Config.ServerURL)
+			m.err = ""
+			return m, nil
+		}
 		return m, m.submit()
 	}
 
@@ -226,19 +239,6 @@ func (m AccountModel) submit() tea.Cmd {
 			}
 			return loginSuccessMsg{resp.User}
 		}
-	}
-
-	if m.pane == PaneServer {
-		url := m.inputs[0].Value()
-		if url == "" {
-			m.err = "server URL is required"
-			return nil
-		}
-		m.client.Config.ServerURL = strings.TrimRight(url, "/")
-		m.client.SaveConfig()
-		m.message = fmt.Sprintf("server set to %s", m.client.Config.ServerURL)
-		m.err = ""
-		return nil
 	}
 
 	if m.pane == PaneRegister {
