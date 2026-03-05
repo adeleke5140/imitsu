@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh api repos/adeleke5140/imitsu/actions/runs --jq '.workflow_runs[:5] | .[] | \"\\\\\\(.event\\) \\\\\\(.head_branch\\) \\\\\\(.name\\) \\\\\\(.status\\) \\\\\\(.created_at\\)\"' 2>&1)"
+    ]
+  }
+}

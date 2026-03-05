@@ -42,7 +42,7 @@ function readPassword(prompt: string): Promise<string> {
 program
   .name("imitsu")
   .description("imitsu - Team secret manager")
-  .version("0.0.1");
+  .version("0.0.2");
 
 // Configure server URL
 program
@@ -138,7 +138,8 @@ program
   .command("set <name> [value]")
   .description("Create or update a secret")
   .option("-c, --category <category>", "Secret category", "general")
-  .action(async (name: string, value: string | undefined, opts: { category: string }) => {
+  .option("-t, --team <team>", "Share with team (by name)")
+  .action(async (name: string, value: string | undefined, opts: { category: string; team?: string }) => {
     try {
       if (!value) {
         value = await readPassword("Secret value: ");
@@ -148,15 +149,32 @@ program
       const list = await api<{ secrets: { id: string; name: string }[] }>("/api/secrets");
       const existing = list.secrets.find((s) => s.name === name);
 
+      let secretId: string;
       if (existing) {
         await api(`/api/secrets/${existing.id}`, { method: "PUT", body: { value } });
+        secretId = existing.id;
         console.log(chalk.green(`Updated: ${name}`));
       } else {
-        await api("/api/secrets", {
+        const created = await api<{ secret: { id: string } }>("/api/secrets", {
           method: "POST",
           body: { name, value, category: opts.category },
         });
+        secretId = created.secret.id;
         console.log(chalk.green(`Created: ${name}`));
+      }
+
+      if (opts.team) {
+        const teams = await api<{ teams: { id: string; name: string }[] }>("/api/teams");
+        const team = teams.teams.find((t) => t.name === opts.team);
+        if (!team) {
+          console.error(chalk.red(`Team not found: ${opts.team}`));
+          process.exit(1);
+        }
+        await api(`/api/secrets/${secretId}/share-team`, {
+          method: "POST",
+          body: { team_id: team.id, permission: "read" },
+        });
+        console.log(chalk.dim(`Shared with team "${opts.team}" (read access)`));
       }
     } catch (err) {
       console.error(chalk.red((err as Error).message));

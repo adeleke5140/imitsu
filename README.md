@@ -41,6 +41,7 @@ imitsu whoami                             # Show current user
 ```bash
 imitsu set <name> [value]                 # Create or update (prompts if no value given)
 imitsu set <name> -c <category>           # Set with a category tag
+imitsu set <name> [value] -t <team>       # Create and share with a team
 imitsu get <name>                         # Print secret value (pipeable)
 imitsu ls                                 # List all accessible secrets
 imitsu rm <name>                          # Delete a secret

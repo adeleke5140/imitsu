@@ -1,6 +1,6 @@
 {
   "name": "imitsu",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Team secret manager",
   "type": "module",
   "main": "dist/server/index.js",
