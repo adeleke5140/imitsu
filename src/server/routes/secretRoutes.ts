@@ -123,6 +123,123 @@ router.get("/", authenticate, (req: Request, res: Response) => {
   res.json({ secrets });
 });
 
+// Bulk import secrets (from key=value pairs)
+router.post("/import", authenticate, (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const { secrets: entries, category, team_id: teamId } = req.body as {
+      secrets: { name: string; value: string }[];
+      category?: string;
+      team_id?: string;
+    };
+
+    if (!entries || !Array.isArray(entries) || entries.length === 0) {
+      res.status(400).json({ error: "secrets array is required" });
+      return;
+    }
+
+    const db = getDb();
+    const created: string[] = [];
+    const updated: string[] = [];
+
+    const insertSecret = db.transaction(() => {
+      for (const entry of entries) {
+        if (!entry.name || !entry.value) continue;
+
+        const existing = db.prepare("SELECT id, version FROM secrets WHERE name = ? AND created_by = ?").get(entry.name, userId) as { id: string; version: number } | undefined;
+
+        if (existing) {
+          const { encrypted, iv, authTag, salt } = encrypt(entry.value, MASTER_KEY);
+          const newVersion = existing.version + 1;
+          db.prepare(
+            `UPDATE secrets SET encrypted_value = ?, iv = ?, auth_tag = ?, salt = ?, version = ?,
+             category = COALESCE(?, category), updated_at = datetime('now') WHERE id = ?`
+          ).run(encrypted, iv, authTag, salt, newVersion, category, existing.id);
+
+          db.prepare(
+            `INSERT INTO secret_versions (id, secret_id, encrypted_value, iv, auth_tag, salt, version, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(uuidv4(), existing.id, encrypted, iv, authTag, salt, newVersion, userId);
+
+          updated.push(entry.name);
+
+          if (teamId) {
+            db.prepare(
+              `INSERT INTO secret_team_access (id, secret_id, team_id, permission, granted_by)
+               VALUES (?, ?, ?, 'read', ?)
+               ON CONFLICT(secret_id, team_id) DO NOTHING`
+            ).run(uuidv4(), existing.id, teamId, userId);
+          }
+        } else {
+          const id = uuidv4();
+          const { encrypted, iv, authTag, salt } = encrypt(entry.value, MASTER_KEY);
+
+          db.prepare(
+            `INSERT INTO secrets (id, name, encrypted_value, iv, auth_tag, salt, category, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(id, entry.name, encrypted, iv, authTag, salt, category ?? "general", userId);
+
+          db.prepare(
+            `INSERT INTO secret_versions (id, secret_id, encrypted_value, iv, auth_tag, salt, version, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, 1, ?)`
+          ).run(uuidv4(), id, encrypted, iv, authTag, salt, userId);
+
+          created.push(entry.name);
+
+          if (teamId) {
+            db.prepare(
+              `INSERT INTO secret_team_access (id, secret_id, team_id, permission, granted_by)
+               VALUES (?, ?, ?, 'read', ?)`
+            ).run(uuidv4(), id, teamId, userId);
+          }
+        }
+      }
+    });
+
+    insertSecret();
+
+    logAudit(userId, "secret.import", "secret", null,
+      `Imported ${created.length} new, ${updated.length} updated secrets`, req.ip ?? null);
+
+    res.status(201).json({ created, updated, total: created.length + updated.length });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to import secrets";
+    res.status(500).json({ error: message });
+  }
+});
+
+// Bulk export secrets as key=value
+router.get("/export", authenticate, (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const userRole = req.user!.role;
+  const db = getDb();
+
+  let rows: SecretRow[];
+  if (userRole === "admin") {
+    rows = db.prepare("SELECT * FROM secrets ORDER BY name").all() as SecretRow[];
+  } else {
+    rows = db.prepare(
+      `SELECT DISTINCT s.* FROM secrets s
+       LEFT JOIN secret_access sa ON s.id = sa.secret_id AND sa.user_id = ?
+       LEFT JOIN secret_team_access sta ON s.id = sta.secret_id
+       LEFT JOIN team_members tm ON tm.team_id = sta.team_id AND tm.user_id = ?
+       WHERE s.created_by = ? OR sa.user_id IS NOT NULL OR tm.user_id IS NOT NULL
+       ORDER BY s.name`
+    ).all(userId, userId, userId) as SecretRow[];
+  }
+
+  const secrets = rows.map((row) => ({
+    name: row.name,
+    value: decrypt(row.encrypted_value, row.iv, row.auth_tag, MASTER_KEY, row.salt),
+    category: row.category,
+  }));
+
+  logAudit(userId, "secret.export", "secret", null,
+    `Exported ${secrets.length} secrets`, req.ip ?? null);
+
+  res.json({ secrets });
+});
+
 // Get a secret's value (decrypted)
 router.get("/:id", authenticate, (req: Request, res: Response) => {
   const userId = req.user!.userId;
@@ -352,123 +469,6 @@ router.post("/:id/share-team", authenticate, (req: Request, res: Response) => {
     const message = err instanceof Error ? err.message : "Failed to share secret";
     res.status(500).json({ error: message });
   }
-});
-
-// Bulk import secrets (from key=value pairs)
-router.post("/import", authenticate, (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.userId;
-    const { secrets: entries, category, team_id: teamId } = req.body as {
-      secrets: { name: string; value: string }[];
-      category?: string;
-      team_id?: string;
-    };
-
-    if (!entries || !Array.isArray(entries) || entries.length === 0) {
-      res.status(400).json({ error: "secrets array is required" });
-      return;
-    }
-
-    const db = getDb();
-    const created: string[] = [];
-    const updated: string[] = [];
-
-    const insertSecret = db.transaction(() => {
-      for (const entry of entries) {
-        if (!entry.name || !entry.value) continue;
-
-        const existing = db.prepare("SELECT id, version FROM secrets WHERE name = ? AND created_by = ?").get(entry.name, userId) as { id: string; version: number } | undefined;
-
-        if (existing) {
-          const { encrypted, iv, authTag, salt } = encrypt(entry.value, MASTER_KEY);
-          const newVersion = existing.version + 1;
-          db.prepare(
-            `UPDATE secrets SET encrypted_value = ?, iv = ?, auth_tag = ?, salt = ?, version = ?,
-             category = COALESCE(?, category), updated_at = datetime('now') WHERE id = ?`
-          ).run(encrypted, iv, authTag, salt, newVersion, category, existing.id);
-
-          db.prepare(
-            `INSERT INTO secret_versions (id, secret_id, encrypted_value, iv, auth_tag, salt, version, created_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-          ).run(uuidv4(), existing.id, encrypted, iv, authTag, salt, newVersion, userId);
-
-          updated.push(entry.name);
-
-          if (teamId) {
-            db.prepare(
-              `INSERT INTO secret_team_access (id, secret_id, team_id, permission, granted_by)
-               VALUES (?, ?, ?, 'read', ?)
-               ON CONFLICT(secret_id, team_id) DO NOTHING`
-            ).run(uuidv4(), existing.id, teamId, userId);
-          }
-        } else {
-          const id = uuidv4();
-          const { encrypted, iv, authTag, salt } = encrypt(entry.value, MASTER_KEY);
-
-          db.prepare(
-            `INSERT INTO secrets (id, name, encrypted_value, iv, auth_tag, salt, category, created_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-          ).run(id, entry.name, encrypted, iv, authTag, salt, category ?? "general", userId);
-
-          db.prepare(
-            `INSERT INTO secret_versions (id, secret_id, encrypted_value, iv, auth_tag, salt, version, created_by)
-             VALUES (?, ?, ?, ?, ?, ?, 1, ?)`
-          ).run(uuidv4(), id, encrypted, iv, authTag, salt, userId);
-
-          created.push(entry.name);
-
-          if (teamId) {
-            db.prepare(
-              `INSERT INTO secret_team_access (id, secret_id, team_id, permission, granted_by)
-               VALUES (?, ?, ?, 'read', ?)`
-            ).run(uuidv4(), id, teamId, userId);
-          }
-        }
-      }
-    });
-
-    insertSecret();
-
-    logAudit(userId, "secret.import", "secret", null,
-      `Imported ${created.length} new, ${updated.length} updated secrets`, req.ip ?? null);
-
-    res.status(201).json({ created, updated, total: created.length + updated.length });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to import secrets";
-    res.status(500).json({ error: message });
-  }
-});
-
-// Bulk export secrets as key=value
-router.get("/export", authenticate, (req: Request, res: Response) => {
-  const userId = req.user!.userId;
-  const userRole = req.user!.role;
-  const db = getDb();
-
-  let rows: SecretRow[];
-  if (userRole === "admin") {
-    rows = db.prepare("SELECT * FROM secrets ORDER BY name").all() as SecretRow[];
-  } else {
-    rows = db.prepare(
-      `SELECT DISTINCT s.* FROM secrets s
-       LEFT JOIN secret_access sa ON s.id = sa.secret_id AND sa.user_id = ?
-       LEFT JOIN secret_team_access sta ON s.id = sta.secret_id
-       LEFT JOIN team_members tm ON tm.team_id = sta.team_id AND tm.user_id = ?
-       WHERE s.created_by = ? OR sa.user_id IS NOT NULL OR tm.user_id IS NOT NULL
-       ORDER BY s.name`
-    ).all(userId, userId, userId) as SecretRow[];
-  }
-
-  const secrets = rows.map((row) => ({
-    name: row.name,
-    value: decrypt(row.encrypted_value, row.iv, row.auth_tag, MASTER_KEY, row.salt),
-    category: row.category,
-  }));
-
-  logAudit(userId, "secret.export", "secret", null,
-    `Exported ${secrets.length} secrets`, req.ip ?? null);
-
-  res.json({ secrets });
 });
 
 // Get version history

@@ -90,6 +90,15 @@ imitsu audit                              # View audit log
 imitsu audit -l 50                        # Last 50 entries
 ```
 
+## TUI (itui)
+
+There's also an interactive terminal UI. See [src/tui/README.md](src/tui/README.md) for installation and usage.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/adeleke5140/imitsu/main/install.sh | sh
+itui
+```
+
 ## Typical Team Workflow
 
 ```bash
@@ -143,14 +152,18 @@ src/
 ├── cli/                    # CLI client
 │   ├── client.ts           # HTTP client + local config
 │   └── vault.ts            # Command definitions
-└── server/                 # API server
-    ├── index.ts            # Express app + rate limiting
-    ├── auth/auth.ts        # Registration, login, JWT
-    ├── crypto/encryption.ts # AES-256-GCM
-    ├── db/schema.ts        # SQLite schema
-    ├── db/audit.ts         # Audit logging
-    ├── middleware/          # Auth guards
-    └── routes/             # API endpoints
+├── server/                 # API server
+│   ├── index.ts            # Express app + rate limiting
+│   ├── auth/auth.ts        # Registration, login, JWT
+│   ├── crypto/encryption.ts # AES-256-GCM
+│   ├── db/schema.ts        # SQLite schema
+│   ├── db/audit.ts         # Audit logging
+│   ├── middleware/          # Auth guards
+│   └── routes/             # API endpoints
+└── tui/                    # Interactive terminal UI (Go)
+    ├── main.go             # Entry point
+    ├── api/client.go       # API client
+    └── ui/                 # Bubble Tea views
 ```
 
 ## License
