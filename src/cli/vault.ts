@@ -42,7 +42,7 @@ function readPassword(prompt: string): Promise<string> {
 program
   .name("imitsu")
   .description("imitsu - Team secret manager")
-  .version("1.0.0");
+  .version("0.0.1");
 
 // Configure server URL
 program
