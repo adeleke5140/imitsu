@@ -8,7 +8,7 @@ import { getDb } from "./db/schema.js";
 const app = express();
 const PORT = parseInt(process.env.IMITSU_PORT || "3100");
 
-app.use(express.json());
+app.use(express.json({ limit: "5mb" }));
 
 // Rate limiting (simple in-memory)
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
