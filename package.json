@@ -1,6 +1,6 @@
 {
-  "name": "@adeleke5140/imitsu",
-  "version": "1.0.0",
+  "name": "imitsu",
+  "version": "0.0.1",
   "description": "Team secret manager",
   "type": "module",
   "main": "dist/server/index.js",
@@ -8,7 +8,7 @@
     "imitsu": "dist/cli/vault.js"
   },
   "files": [
-    "dist/**/*"
+    "dist/cli/**/*"
   ],
   "scripts": {
     "build": "tsc",
@@ -22,13 +22,11 @@
     "type": "git",
     "url": "https://github.com/adeleke5140/imitsu.git"
   },
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
-  },
-  "keywords": [],
+"keywords": [],
   "author": "adeleke5140",
   "license": "ISC",
   "devDependencies": {
+    "@flydotio/dockerfile": "^0.7.10",
     "@types/chalk": "^0.4.31",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
