@@ -256,6 +256,27 @@ func (c *Client) DeleteSecret(id string) error {
 	return err
 }
 
+type ExportedSecret struct {
+	Name     string `json:"name"`
+	Value    string `json:"value"`
+	Category string `json:"category"`
+}
+
+func (c *Client) ExportSecrets() ([]ExportedSecret, error) {
+	data, err := c.request("GET", "/api/secrets/export", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Secrets []ExportedSecret `json:"secrets"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Secrets, nil
+}
+
 // Teams
 
 type Team struct {

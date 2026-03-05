@@ -21,28 +21,58 @@ cd src/tui
 go build -o itui .
 ```
 
-## Usage
+## Getting Started
 
 ```sh
 itui
 ```
 
-The TUI reads credentials from `~/.imitsu/config.json`, shared with the CLI. If you've already logged in via `imitsu login`, the TUI picks up the session automatically.
+On first launch you'll land on the **account** tab. From there:
+
+1. Go to **server** in the sidebar and set your imitsu server URL
+2. Go to **register** to create an account, or **login** if you already have one
+3. After logging in you'll be switched to the secrets tab
+
+Configuration is stored in `~/.imitsu/config.json` and shared with the CLI. If you've already run `imitsu server <url>` and `imitsu login`, the TUI picks up the session automatically.
+
+## Tabs
+
+| Key | Tab |
+|---|---|
+| `s` | Secrets — list, view, create, delete, export |
+| `t` | Teams — list teams, view members |
+| `a` | Account — login, register, server config, profile |
 
 ## Keybindings
 
+### Global
+
 | Key | Action |
 |---|---|
-| `s` / `t` | Switch between secrets and teams tabs |
+| `s` / `t` / `a` | Switch tabs |
+| `q` | Quit |
+| `ctrl+l` | Logout |
+
+### Secrets
+
+| Key | Action |
+|---|---|
 | `j` / `k` | Navigate up/down |
-| `enter` | View detail |
-| `n` | New secret (in secrets tab) |
-| `d` | Delete secret (in detail view) |
+| `enter` | View secret detail |
+| `n` | New secret |
+| `e` | Export secrets to .env file |
+| `d` | Delete (in detail view) |
 | `r` | Refresh |
 | `esc` | Go back |
-| `ctrl+r` | Toggle login/register |
-| `ctrl+l` | Logout |
-| `q` | Quit |
+
+### Account sidebar
+
+| Key | Action |
+|---|---|
+| `j` / `k` | Navigate sidebar |
+| `enter` | Select pane |
+| `tab` | Next form field |
+| `esc` | Back to sidebar |
 
 ## Release
 

@@ -14,6 +14,7 @@ type Tab int
 const (
 	TabSecrets Tab = iota
 	TabTeams
+	TabAccount
 )
 
 type AppModel struct {
@@ -23,9 +24,9 @@ type AppModel struct {
 	width  int
 	height int
 
-	login   LoginModel
 	secrets SecretsModel
 	teams   TeamsModel
+	account AccountModel
 
 	loggedIn bool
 }
@@ -33,28 +34,28 @@ type AppModel struct {
 func NewApp() AppModel {
 	client := api.NewClient()
 	m := AppModel{
-		client: client,
-		login:  NewLoginModel(client),
+		client:  client,
+		account: NewAccountModel(client),
+		secrets: NewSecretsModel(client),
+		teams:   NewTeamsModel(client),
 	}
 
 	if client.IsLoggedIn() {
 		m.loggedIn = true
-		m.secrets = NewSecretsModel(client)
-		m.teams = NewTeamsModel(client)
+		m.tab = TabSecrets
+	} else {
+		m.tab = TabAccount
 	}
 
 	return m
 }
 
 func (m AppModel) Init() tea.Cmd {
+	cmds := []tea.Cmd{m.account.Init()}
 	if m.loggedIn {
-		return tea.Batch(
-			m.secrets.Init(),
-			m.teams.Init(),
-			m.fetchUser(),
-		)
+		cmds = append(cmds, m.secrets.Init(), m.teams.Init(), m.fetchUser())
 	}
-	return m.login.Init()
+	return tea.Batch(cmds...)
 }
 
 func (m AppModel) fetchUser() tea.Cmd {
@@ -83,13 +84,18 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "s":
-			if m.loggedIn && !m.isTyping() {
+			if !m.isTyping() && m.loggedIn {
 				m.tab = TabSecrets
 				return m, nil
 			}
 		case "t":
-			if m.loggedIn && !m.isTyping() {
+			if !m.isTyping() && m.loggedIn {
 				m.tab = TabTeams
+				return m, nil
+			}
+		case "a":
+			if !m.isTyping() {
+				m.tab = TabAccount
 				return m, nil
 			}
 		case "ctrl+l":
@@ -97,32 +103,30 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.client.Logout()
 				m.loggedIn = false
 				m.user = nil
-				m.login = NewLoginModel(m.client)
-				return m, m.login.Init()
+				m.account = NewAccountModel(m.client)
+				m.tab = TabAccount
+				return m, m.account.Init()
 			}
 		}
 
 	case loginSuccessMsg:
 		m.loggedIn = true
 		m.user = &msg.user
+		m.account.SetUser(&msg.user)
 		m.secrets = NewSecretsModel(m.client)
 		m.teams = NewTeamsModel(m.client)
+		m.tab = TabSecrets
 		return m, tea.Batch(m.secrets.Init(), m.teams.Init())
 
 	case loginErrMsg:
 		if m.loggedIn {
 			m.loggedIn = false
 			m.user = nil
-			m.login = NewLoginModel(m.client)
-			m.login.err = "session expired, please login again"
-			return m, m.login.Init()
+			m.account = NewAccountModel(m.client)
+			m.account.err = "session expired, please login again"
+			m.tab = TabAccount
+			return m, m.account.Init()
 		}
-	}
-
-	if !m.loggedIn {
-		var cmd tea.Cmd
-		m.login, cmd = m.login.Update(msg)
-		return m, cmd
 	}
 
 	// Key events only go to the active tab
@@ -136,22 +140,27 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.teams, cmd = m.teams.Update(msg)
 			return m, cmd
+		case TabAccount:
+			var cmd tea.Cmd
+			m.account, cmd = m.account.Update(msg)
+			return m, cmd
 		}
 		return m, nil
 	}
 
-	// Data messages go to both models so background fetches aren't lost
-	var cmd1, cmd2 tea.Cmd
+	// Data messages go to all models so background fetches aren't lost
+	var cmd1, cmd2, cmd3 tea.Cmd
 	m.secrets, cmd1 = m.secrets.Update(msg)
 	m.teams, cmd2 = m.teams.Update(msg)
-	return m, tea.Batch(cmd1, cmd2)
+	m.account, cmd3 = m.account.Update(msg)
+	return m, tea.Batch(cmd1, cmd2, cmd3)
 }
 
 func (m AppModel) isTyping() bool {
-	if !m.loggedIn {
+	if m.tab == TabAccount && m.account.focus == FocusForm {
 		return true
 	}
-	if m.tab == TabSecrets && m.secrets.view == SecretCreate {
+	if m.tab == TabSecrets && (m.secrets.view == SecretCreate || m.secrets.view == SecretExport) {
 		return true
 	}
 	return false
@@ -167,11 +176,6 @@ func (m AppModel) View() string {
 		h = 24
 	}
 
-	if !m.loggedIn {
-		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, m.login.View())
-	}
-
-	// Build all three parts as one unified block, then center the whole thing
 	tabBar := m.renderTabs()
 	content := m.renderContent()
 	statusBar := m.renderStatusBar()
@@ -191,9 +195,11 @@ func (m AppModel) renderTabs() string {
 	tabs := []struct {
 		key  string
 		name string
+		tab  Tab
 	}{
-		{"s", "secrets"},
-		{"t", "teams"},
+		{"s", "secrets", TabSecrets},
+		{"t", "teams", TabTeams},
+		{"a", "account", TabAccount},
 	}
 
 	tabWidth := ContentWidth / len(tabs)
@@ -214,9 +220,9 @@ func (m AppModel) renderTabs() string {
 		BorderForeground(lipgloss.Color("237"))
 
 	var rendered []string
-	for i, tab := range tabs {
+	for _, tab := range tabs {
 		label := fmt.Sprintf("%s %s", tab.key, tab.name)
-		if Tab(i) == m.tab {
+		if tab.tab == m.tab {
 			rendered = append(rendered, activeStyle.Render(label))
 		} else {
 			rendered = append(rendered, inactiveStyle.Render(label))
@@ -230,9 +236,19 @@ func (m AppModel) renderContent() string {
 	content := ""
 	switch m.tab {
 	case TabSecrets:
-		content = m.secrets.View()
+		if !m.loggedIn {
+			content = Subtle.Render("login to view secrets")
+		} else {
+			content = m.secrets.View()
+		}
 	case TabTeams:
-		content = m.teams.View()
+		if !m.loggedIn {
+			content = Subtle.Render("login to view teams")
+		} else {
+			content = m.teams.View()
+		}
+	case TabAccount:
+		content = m.account.View()
 	}
 
 	return lipgloss.NewStyle().
@@ -248,13 +264,14 @@ func (m AppModel) renderStatusBar() string {
 	userInfo := ""
 	if m.user != nil {
 		userInfo = fmt.Sprintf("%s (%s)", m.user.Email, m.user.Role)
+	} else {
+		userInfo = "not logged in"
 	}
 	serverInfo := Subtle.Render(m.client.Config.ServerURL)
 
 	helpItems := []string{
-		Accent.Render("s") + Subtle.Render("/") + Accent.Render("t") + Subtle.Render(" tabs"),
+		Accent.Render("s") + Subtle.Render("/") + Accent.Render("t") + Subtle.Render("/") + Accent.Render("a") + Subtle.Render(" tabs"),
 		Accent.Render("j") + Subtle.Render("/") + Accent.Render("k") + Subtle.Render(" navigate"),
-		Accent.Render("ctrl+l") + Subtle.Render(" logout"),
 		Accent.Render("q") + Subtle.Render(" quit"),
 	}
 	helpLine := strings.Join(helpItems, "    ")

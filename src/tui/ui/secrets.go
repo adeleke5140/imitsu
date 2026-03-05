@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/adeleke5140/imitsu/tui/api"
@@ -15,12 +17,16 @@ const (
 	SecretsList SecretsView = iota
 	SecretDetail
 	SecretCreate
+	SecretExport
 )
+
+const pageSize = 5
 
 type SecretsModel struct {
 	client   *api.Client
 	secrets  []api.Secret
 	cursor   int
+	offset   int // scroll offset for pagination
 	view     SecretsView
 	err      string
 	loading  bool
@@ -32,6 +38,11 @@ type SecretsModel struct {
 
 	// confirm delete
 	confirmDelete bool
+
+	// export
+	exportInput   textinput.Model
+	exportStatus  string
+	exporting     bool
 }
 
 type secretsLoadedMsg struct {
@@ -44,6 +55,12 @@ type secretDetailMsg struct {
 
 type secretCreatedMsg struct{}
 type secretDeletedMsg struct{}
+
+type secretExportStartedMsg struct{}
+type secretExportDoneMsg struct {
+	path  string
+	count int
+}
 
 type secretErrMsg struct {
 	err error
@@ -95,11 +112,19 @@ func (m SecretsModel) Update(msg tea.Msg) (SecretsModel, tea.Cmd) {
 		m.selected = nil
 		m.confirmDelete = false
 		m.loading = false
+		m.cursor = 0
+		m.offset = 0
 		return m, m.loadSecrets()
+
+	case secretExportDoneMsg:
+		m.exporting = false
+		m.exportStatus = fmt.Sprintf("exported %d secrets to %s", msg.count, msg.path)
+		return m, nil
 
 	case secretErrMsg:
 		m.err = msg.err.Error()
 		m.loading = false
+		m.exporting = false
 		return m, nil
 
 	case tea.KeyMsg:
@@ -110,6 +135,13 @@ func (m SecretsModel) Update(msg tea.Msg) (SecretsModel, tea.Cmd) {
 	if m.view == SecretCreate && m.createFocus < len(m.createInputs) {
 		var cmd tea.Cmd
 		m.createInputs[m.createFocus], cmd = m.createInputs[m.createFocus].Update(msg)
+		return m, cmd
+	}
+
+	// Update text input if in export view
+	if m.view == SecretExport {
+		var cmd tea.Cmd
+		m.exportInput, cmd = m.exportInput.Update(msg)
 		return m, cmd
 	}
 
@@ -124,6 +156,8 @@ func (m SecretsModel) handleKey(msg tea.KeyMsg) (SecretsModel, tea.Cmd) {
 		return m.handleDetailKey(msg)
 	case SecretCreate:
 		return m.handleCreateKey(msg)
+	case SecretExport:
+		return m.handleExportKey(msg)
 	}
 	return m, nil
 }
@@ -133,10 +167,16 @@ func (m SecretsModel) handleListKey(msg tea.KeyMsg) (SecretsModel, tea.Cmd) {
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
+			if m.cursor < m.offset {
+				m.offset = m.cursor
+			}
 		}
 	case "down", "j":
 		if m.cursor < len(m.secrets)-1 {
 			m.cursor++
+			if m.cursor >= m.offset+pageSize {
+				m.offset = m.cursor - pageSize + 1
+			}
 		}
 	case "enter":
 		if len(m.secrets) > 0 {
@@ -157,6 +197,16 @@ func (m SecretsModel) handleListKey(msg tea.KeyMsg) (SecretsModel, tea.Cmd) {
 		return m, m.createInputs[0].Focus()
 	case "r":
 		return m, m.loadSecrets()
+	case "e":
+		m.view = SecretExport
+		m.exportStatus = ""
+		m.err = ""
+		input := textinput.New()
+		input.Placeholder = ".env.local"
+		input.CharLimit = 256
+		input.Width = 40
+		m.exportInput = input
+		return m, m.exportInput.Focus()
 	}
 	return m, nil
 }
@@ -233,6 +283,48 @@ func (m SecretsModel) handleCreateKey(msg tea.KeyMsg) (SecretsModel, tea.Cmd) {
 	return m, cmd
 }
 
+func (m SecretsModel) handleExportKey(msg tea.KeyMsg) (SecretsModel, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.view = SecretsList
+		return m, nil
+	case "enter":
+		if m.exporting {
+			return m, nil
+		}
+		filename := m.exportInput.Value()
+		if filename == "" {
+			filename = ".env.local"
+		}
+		m.exporting = true
+		m.exportStatus = "fetching secrets..."
+		m.err = ""
+		client := m.client
+		return m, func() tea.Msg {
+			secrets, err := client.ExportSecrets()
+			if err != nil {
+				return secretErrMsg{err}
+			}
+
+			var sb strings.Builder
+			for _, s := range secrets {
+				sb.WriteString(fmt.Sprintf("%s=%s\n", s.Name, s.Value))
+			}
+
+			outPath, _ := filepath.Abs(filename)
+			if err := os.WriteFile(outPath, []byte(sb.String()), 0600); err != nil {
+				return secretErrMsg{err}
+			}
+
+			return secretExportDoneMsg{path: outPath, count: len(secrets)}
+		}
+	}
+
+	var cmd tea.Cmd
+	m.exportInput, cmd = m.exportInput.Update(msg)
+	return m, cmd
+}
+
 func (m SecretsModel) focusCreateInput() tea.Cmd {
 	cmds := make([]tea.Cmd, len(m.createInputs))
 	for i := range m.createInputs {
@@ -272,6 +364,8 @@ func (m SecretsModel) View() string {
 		return m.viewDetail()
 	case SecretCreate:
 		return m.viewCreate()
+	case SecretExport:
+		return m.viewExport()
 	default:
 		return m.viewList()
 	}
@@ -302,7 +396,18 @@ func (m SecretsModel) viewList() string {
 		b.WriteString(Subtle.Render("  " + strings.Repeat("─", 65)))
 		b.WriteString("\n")
 
-		for i, s := range m.secrets {
+		end := m.offset + pageSize
+		if end > len(m.secrets) {
+			end = len(m.secrets)
+		}
+
+		if m.offset > 0 {
+			b.WriteString(Subtle.Render("  ↑ more"))
+			b.WriteString("\n")
+		}
+
+		for i := m.offset; i < end; i++ {
+			s := m.secrets[i]
 			line := fmt.Sprintf("%-28s %-12s v%-4d %s", s.Name, s.Category, s.Version, s.UpdatedAt)
 			if i == m.cursor {
 				b.WriteString(SelectedItem.Render("> " + line))
@@ -311,9 +416,16 @@ func (m SecretsModel) viewList() string {
 			}
 			b.WriteString("\n")
 		}
+
+		if end < len(m.secrets) {
+			b.WriteString(Subtle.Render(fmt.Sprintf("  ↓ %d more", len(m.secrets)-end)))
+			b.WriteString("\n")
+		}
+
+		b.WriteString(Subtle.Render(fmt.Sprintf("\n  %d/%d", m.cursor+1, len(m.secrets))))
 	}
 
-	b.WriteString(HelpStyle.Render("\nj/k: navigate | enter: view | n: new | r: refresh | d: delete"))
+	b.WriteString(HelpStyle.Render("\nj/k: navigate | enter: view | n: new | e: export | r: refresh"))
 
 	return b.String()
 }
@@ -374,6 +486,45 @@ func (m SecretsModel) viewCreate() string {
 	}
 
 	b.WriteString(HelpStyle.Render("enter: create | tab: next field | esc: cancel"))
+
+	return b.String()
+}
+
+func (m SecretsModel) viewExport() string {
+	var b strings.Builder
+
+	b.WriteString(Title.Render("Export Secrets"))
+	b.WriteString("\n\n")
+
+	b.WriteString(Subtle.Render("Export all secrets as a .env file."))
+	b.WriteString("\n\n")
+
+	if m.exporting {
+		b.WriteString(Highlight.Render("File"))
+	} else {
+		b.WriteString(Subtle.Render("File"))
+	}
+	b.WriteString("\n")
+	b.WriteString(m.exportInput.View())
+	b.WriteString("\n\n")
+
+	if m.exporting {
+		b.WriteString(Highlight.Render(m.exportStatus))
+		b.WriteString("\n")
+	}
+
+	if m.exportStatus != "" && !m.exporting {
+		b.WriteString(Success.Render(m.exportStatus))
+		b.WriteString("\n")
+	}
+
+	if m.err != "" {
+		b.WriteString(ErrorText.Render(m.err))
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(HelpStyle.Render("enter: export | esc: cancel"))
 
 	return b.String()
 }
