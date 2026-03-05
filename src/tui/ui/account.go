@@ -188,7 +188,6 @@ func (m AccountModel) handleFormKey(msg tea.KeyMsg) (AccountModel, tea.Cmd) {
 		if m.loading {
 			return m, nil
 		}
-		// Server pane modifies model directly, handle inline
 		if m.pane == PaneServer {
 			url := m.inputs[0].Value()
 			if url == "" {
