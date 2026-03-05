@@ -30,12 +30,18 @@ const { title = 'imitsu - Team secret manager' } = Astro.props;
 		box-sizing: border-box;
 	}
 
+	@font-face {
+		font-family: 'Inter Variable';
+		font-display: optional;
+		src: local('Inter Variable');
+	}
+
 	html, body {
 		width: 100%;
 		height: 100%;
 		background: #0a0a0a;
 		color: #ffffff;
-	 	font-family: 'Inter Variable', sans-serif;	
+	 	font-family: 'Inter Variable', sans-serif;
 		-webkit-font-smoothing: antialiased;
 		-moz-osx-font-smoothing: grayscale;
 	}
