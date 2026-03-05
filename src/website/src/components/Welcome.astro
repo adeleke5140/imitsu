@@ -1,0 +1,236 @@
+---
+const installCmd = 'curl -fsSL https://imitsu.kehinde.xyz/install | sh';
+---
+
+<div class="page">
+	<nav>
+		<a href="/" class="logo">
+			imitsu<span class="cursor"></span>
+		</a>
+		<a href="https://github.com/adeleke5140/imitsu" class="github-link" target="_blank" rel="noopener">
+			GitHub
+			<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M3.5 10.5L10.5 3.5M10.5 3.5H4.5M10.5 3.5V9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+			</svg>
+		</a>
+	</nav>
+
+	<main >
+		<h1>
+			Manage your team's<br />
+			secrets from the<br />
+			terminal.
+		</h1>
+
+		<p class="subtitle">
+			A team secret manager with an interactive TUI.<br />
+			Create, share, and export secrets — no browser needed.
+		</p>
+
+		<div class="install">
+			<div class="install-label">Install itui</div>
+			<div class="install-command">
+				<code>{installCmd}</code>
+				<button class="copy-btn" data-cmd={installCmd} aria-label="Copy to clipboard">
+					<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+						<rect x="5" y="5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+						<path d="M3 11V3.5C3 2.67 3.67 2 4.5 2H11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+					</svg>
+				</button>
+			</div>
+		</div>
+	</main>
+</div>
+
+<script>
+	document.querySelector('.copy-btn')?.addEventListener('click', (e) => {
+		const btn = e.currentTarget as HTMLButtonElement;
+		const cmd = btn.dataset.cmd;
+		if (cmd) {
+			navigator.clipboard.writeText(cmd);
+			btn.classList.add('copied');
+			setTimeout(() => btn.classList.remove('copied'), 2000);
+		}
+	});
+</script>
+
+<style>
+	.page {
+		min-height: 100vh;
+		display: flex;
+		justify-content: space-between;
+		flex-direction: column;
+		padding: 2rem 3rem;
+	}
+
+	nav {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.logo {
+		font-size: 1.25rem;
+		font-weight: 600;
+		color: #fff;
+		text-decoration: none;
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		letter-spacing: -0.02em;
+	}
+
+	.cursor {
+		display: inline-block;
+		width: 10px;
+		height: 18px;
+		background: #ff87d7;
+		border-radius: 2px;
+		margin-left: 2px;
+	}
+
+	.github-link {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		color: #666;
+		text-decoration: none;
+		font-size: 0.875rem;
+		transition: color 0.2s;
+	}
+
+	.github-link:hover {
+		color: #999;
+	}
+
+	main {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		padding-block-end: 3rem;
+	}
+
+	h1 {
+		font-size: clamp(3rem, 8vw, 7rem);
+		font-weight: 400;
+		line-height: 1.05;
+		letter-spacing: -.05em;
+		color: #fff;
+		margin-bottom: 2rem;
+	}
+
+	.subtitle {
+		font-size: 1.25rem;
+		line-height: 1.7;
+		color: #666;
+		max-width: 580px;
+		margin-bottom: 3rem;
+	}
+
+	.install {
+		max-width: 600px;
+	}
+
+	.install-label {
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: #666;
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		margin-bottom: 0.75rem;
+	}
+
+	.install-command {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		background: #141414;
+		border: 1px solid #222;
+		border-radius: 12px;
+		padding: 1rem 1.25rem;
+		transition: border-color 0.2s;
+	}
+
+	.install-command:hover {
+		border-color: #333;
+	}
+
+	.install-command code {
+		flex: 1;
+		font-family: ui-monospace, 'SF Mono', 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
+		font-size: 0.875rem;
+		color: #ff87d7;
+		white-space: nowrap;
+		overflow-x: auto;
+	}
+
+	.copy-btn {
+		flex-shrink: 0;
+		background: none;
+		border: none;
+		color: #555;
+		cursor: pointer;
+		padding: 4px;
+		border-radius: 4px;
+		transition: color 0.2s;
+		display: flex;
+		align-items: center;
+	}
+
+	.copy-btn:hover {
+		color: #999;
+	}
+
+	.copy-btn.copied {
+		color: #ff87d7;
+	}
+
+	footer {
+		padding-top: 1.5rem;
+	}
+
+	.features {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+	}
+
+	.feature {
+		color: #444;
+		font-size: 0.875rem;
+	}
+
+	.dot {
+		width: 3px;
+		height: 3px;
+		background: #333;
+		border-radius: 50%;
+	}
+
+	@media (max-width: 768px) {
+		.page {
+			padding: 1.5rem;
+		}
+
+		h1 {
+			font-size: clamp(2.25rem, 10vw, 3.5rem);
+		}
+
+		.subtitle {
+			font-size: 1rem;
+		}
+
+		.install-command {
+			padding: 0.875rem 1rem;
+		}
+
+		.install-command code {
+			font-size: 0.75rem;
+		}
+
+		.features {
+			flex-wrap: wrap;
+			gap: 0.75rem;
+		}
+	}
+</style>
