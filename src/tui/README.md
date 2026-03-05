@@ -46,9 +46,9 @@ The TUI reads credentials from `~/.imitsu/config.json`, shared with the CLI. If 
 
 ## Release
 
-Pushing a tag like `tui-v0.1.0` triggers a GitHub Actions workflow that cross-compiles binaries for macOS and Linux (amd64 + arm64) via GoReleaser.
+Pushing a tag like `v0.1.0` triggers a GitHub Actions workflow that cross-compiles binaries for macOS and Linux (amd64 + arm64) via GoReleaser.
 
 ```sh
-git tag tui-v0.1.0
-git push origin tui-v0.1.0
+git tag v0.1.0
+git push origin v0.1.0
 ```

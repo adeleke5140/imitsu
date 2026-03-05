@@ -1,8 +1,16 @@
+version: 2
+
 project_name: itui
 
 before:
   hooks:
     - go mod tidy
+
+git:
+  tag_sort: -version:refname
+  prerelease_suffix: "-"
+  ignore_tags:
+    - "(?i)^[^v]"
 
 builds:
   - main: .

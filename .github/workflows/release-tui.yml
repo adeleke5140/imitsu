@@ -3,7 +3,7 @@ name: Release TUI
 on:
   push:
     tags:
-      - "tui-v*"
+      - "v*"
 
 permissions:
   contents: write
