@@ -243,7 +243,7 @@ router.get("/export", authenticate, (req: Request, res: Response) => {
 
   let rows: SecretRow[];
   if (userRole === "admin") {
-    rows = db.prepare("SELECT * FROM secrets ORDER BY position, name").all() as SecretRow[];
+    rows = db.prepare("SELECT * FROM secrets ORDER BY category, position, name").all() as SecretRow[];
   } else {
     rows = db.prepare(
       `SELECT DISTINCT s.* FROM secrets s
@@ -251,7 +251,7 @@ router.get("/export", authenticate, (req: Request, res: Response) => {
        LEFT JOIN secret_team_access sta ON s.id = sta.secret_id
        LEFT JOIN team_members tm ON tm.team_id = sta.team_id AND tm.user_id = ?
        WHERE s.created_by = ? OR sa.user_id IS NOT NULL OR tm.user_id IS NOT NULL
-       ORDER BY s.position, s.name`
+       ORDER BY s.category, s.position, s.name`
     ).all(userId, userId, userId) as SecretRow[];
   }
 
