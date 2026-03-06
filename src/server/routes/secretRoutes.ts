@@ -64,15 +64,15 @@ router.post("/", authenticate, (req: Request, res: Response) => {
       expires_at?: string;
     };
 
-    if (!name || !value) {
-      res.status(400).json({ error: "name and value are required" });
+    if (!name) {
+      res.status(400).json({ error: "name is required" });
       return;
     }
 
     const userId = req.user!.userId;
     const db = getDb();
     const id = uuidv4();
-    const { encrypted, iv, authTag, salt } = encrypt(value, MASTER_KEY);
+    const { encrypted, iv, authTag, salt } = encrypt(value ?? "", MASTER_KEY);
 
     db.prepare(
       `INSERT INTO secrets (id, name, encrypted_value, iv, auth_tag, salt, category, created_by, expires_at)
@@ -144,7 +144,7 @@ router.post("/import", authenticate, (req: Request, res: Response) => {
 
     const insertSecret = db.transaction(() => {
       for (const entry of entries) {
-        if (!entry.name || !entry.value) continue;
+        if (!entry.name) continue;
 
         // Find existing secret by name that the user owns or has write access to
         const existing = db.prepare(
