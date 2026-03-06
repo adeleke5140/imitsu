@@ -5,7 +5,11 @@ import chalk from "chalk";
 import readline from "readline";
 import fs from "fs";
 import path from "path";
+import { createRequire } from "module";
 import { api, setAuth, clearAuth, getConfig, setServer } from "./client.js";
+
+const require = createRequire(import.meta.url);
+const { version } = require("../../package.json");
 
 const program = new Command();
 
@@ -42,7 +46,7 @@ function readPassword(prompt: string): Promise<string> {
 program
   .name("imitsu")
   .description("imitsu - Team secret manager")
-  .version("0.0.3");
+  .version(version);
 
 // Configure server URL
 program
