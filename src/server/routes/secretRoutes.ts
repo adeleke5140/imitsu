@@ -509,4 +509,52 @@ router.get("/:id/versions", authenticate, (req: Request, res: Response) => {
   res.json({ versions });
 });
 
+// Deduplicate secrets - keeps the newest per name, deletes the rest (admin only)
+router.post("/deduplicate", authenticate, (req: Request, res: Response) => {
+  try {
+    const userRole = req.user!.role;
+    const userId = req.user!.userId;
+
+    if (userRole !== "admin") {
+      res.status(403).json({ error: "Admin only" });
+      return;
+    }
+
+    const db = getDb();
+
+    // Find duplicate names and the IDs to delete (keep the most recently updated)
+    const dupes = db.prepare(
+      `SELECT id, name FROM secrets
+       WHERE id NOT IN (
+         SELECT id FROM (
+           SELECT id, ROW_NUMBER() OVER (PARTITION BY name ORDER BY updated_at DESC, version DESC) as rn
+           FROM secrets
+         ) WHERE rn = 1
+       )`
+    ).all() as { id: string; name: string }[];
+
+    if (dupes.length === 0) {
+      res.json({ message: "No duplicates found", deleted: 0 });
+      return;
+    }
+
+    const deleteIds = dupes.map((d) => d.id);
+
+    db.transaction(() => {
+      for (const id of deleteIds) {
+        db.prepare("DELETE FROM secrets WHERE id = ?").run(id);
+      }
+    })();
+
+    const names = [...new Set(dupes.map((d) => d.name))];
+    logAudit(userId, "secret.deduplicate", "secret", null,
+      `Removed ${dupes.length} duplicates for: ${names.join(", ")}`, req.ip ?? null);
+
+    res.json({ message: `Removed ${dupes.length} duplicates`, deleted: dupes.length, names });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to deduplicate";
+    res.status(500).json({ error: message });
+  }
+});
+
 export default router;
