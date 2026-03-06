@@ -3,7 +3,7 @@
   "version": "0.0.5",
   "description": "Team secret manager",
   "type": "module",
-  "main": "dist/server/index.js",
+  "main": "dist/cli/vault.js",
   "bin": {
     "imitsu": "dist/cli/vault.js"
   },

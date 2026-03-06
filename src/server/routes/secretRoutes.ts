@@ -101,10 +101,16 @@ router.post("/", authenticate, (req: Request, res: Response) => {
 router.get("/", authenticate, (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const userRole = req.user!.role;
+  const mine = req.query.mine === "true";
   const db = getDb();
 
   let secrets;
-  if (userRole === "admin") {
+  if (mine) {
+    secrets = db.prepare(
+      `SELECT id, name, category, created_by, created_at, updated_at, expires_at, version
+       FROM secrets WHERE created_by = ? ORDER BY updated_at DESC`
+    ).all(userId);
+  } else if (userRole === "admin") {
     secrets = db.prepare(
       `SELECT id, name, category, created_by, created_at, updated_at, expires_at, version
        FROM secrets ORDER BY updated_at DESC`
