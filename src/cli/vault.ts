@@ -352,11 +352,24 @@ program
 
 // === IMPORT / EXPORT ===
 
-function parseEnvFile(content: string): { name: string; value: string }[] {
-  const entries: { name: string; value: string }[] = [];
+function parseEnvFile(content: string): { name: string; value: string; category: string; position: number }[] {
+  const entries: { name: string; value: string; category: string; position: number }[] = [];
+  let currentCategory = "general";
+  let position = 0;
+
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
+    if (!trimmed) continue;
+
+    // Detect section headers like "### Application ###" or "# Application" or "## Database"
+    if (trimmed.startsWith("#")) {
+      const header = trimmed.replace(/^#+\s*/, "").replace(/\s*#+$/, "").trim();
+      if (header) {
+        currentCategory = header.toLowerCase();
+      }
+      continue;
+    }
+
     const eqIdx = trimmed.indexOf("=");
     if (eqIdx === -1) continue;
     const name = trimmed.slice(0, eqIdx).trim();
@@ -365,17 +378,19 @@ function parseEnvFile(content: string): { name: string; value: string }[] {
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
     }
-    if (name) entries.push({ name, value });
+    if (name) {
+      entries.push({ name, value, category: currentCategory, position });
+      position++;
+    }
   }
   return entries;
 }
 
 program
   .command("import <file>")
-  .description("Bulk import secrets from a .env file")
-  .option("-c, --category <category>", "Category for imported secrets", "general")
+  .description("Bulk import secrets from a .env file (section headers become categories)")
   .option("-t, --team <team>", "Share with team (by name)")
-  .action(async (file: string, opts: { category: string; team?: string }) => {
+  .action(async (file: string, opts: { team?: string }) => {
     try {
       const filePath = path.resolve(file);
       if (!fs.existsSync(filePath)) {
@@ -391,7 +406,8 @@ program
         return;
       }
 
-      console.log(chalk.dim(`Parsed ${entries.length} entries from ${path.basename(file)}`));
+      const categories = [...new Set(entries.map((e) => e.category))];
+      console.log(chalk.dim(`Parsed ${entries.length} entries from ${path.basename(file)} (${categories.length} sections: ${categories.join(", ")})`));
 
       let teamId: string | undefined;
       if (opts.team) {
@@ -406,7 +422,7 @@ program
 
       const data = await api<{ created: string[]; updated: string[]; total: number }>("/api/secrets/import", {
         method: "POST",
-        body: { secrets: entries, category: opts.category, team_id: teamId },
+        body: { secrets: entries, team_id: teamId },
       });
 
       if (data.created.length > 0) {
@@ -427,11 +443,11 @@ program
 
 program
   .command("export [file]")
-  .description("Export secrets as .env format")
+  .description("Export secrets as .env format (grouped by category)")
   .option("-c, --category <category>", "Filter by category")
   .action(async (file: string | undefined, opts: { category?: string }) => {
     try {
-      const data = await api<{ secrets: { name: string; value: string; category: string }[] }>("/api/secrets/export");
+      const data = await api<{ secrets: { name: string; value: string; category: string; position: number }[] }>("/api/secrets/export");
 
       let secrets = data.secrets;
       if (opts.category) {
@@ -443,7 +459,18 @@ program
         return;
       }
 
-      const envContent = secrets.map((s) => `${s.name}=${s.value}`).join("\n") + "\n";
+      // Group by category preserving position order
+      let envContent = "";
+      let lastCategory = "";
+      for (const s of secrets) {
+        if (s.category !== lastCategory) {
+          if (envContent) envContent += "\n";
+          const header = s.category.charAt(0).toUpperCase() + s.category.slice(1);
+          envContent += `###########################\n### ${header}\n###########################\n`;
+          lastCategory = s.category;
+        }
+        envContent += `${s.name}=${s.value}\n`;
+      }
 
       if (file) {
         const outPath = path.resolve(file);
