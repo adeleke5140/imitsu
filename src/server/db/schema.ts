@@ -39,7 +39,8 @@ function initSchema(db: Database.Database) {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       expires_at TEXT,
-      version INTEGER NOT NULL DEFAULT 1
+      version INTEGER NOT NULL DEFAULT 1,
+      position INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS secret_versions (
@@ -112,4 +113,10 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log(user_id);
     CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at);
   `);
+
+  // Migration: add position column if missing
+  const cols = db.prepare("PRAGMA table_info(secrets)").all() as { name: string }[];
+  if (!cols.some((c) => c.name === "position")) {
+    db.exec("ALTER TABLE secrets ADD COLUMN position INTEGER NOT NULL DEFAULT 0");
+  }
 }

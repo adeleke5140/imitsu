@@ -22,6 +22,7 @@ interface SecretRow {
   updated_at: string;
   expires_at: string | null;
   version: number;
+  position: number;
 }
 
 // Check if user can access a secret
@@ -128,7 +129,7 @@ router.post("/import", authenticate, (req: Request, res: Response) => {
   try {
     const userId = req.user!.userId;
     const { secrets: entries, category, team_id: teamId } = req.body as {
-      secrets: { name: string; value: string }[];
+      secrets: { name: string; value: string; category?: string; position?: number }[];
       category?: string;
       team_id?: string;
     };
@@ -165,13 +166,16 @@ router.post("/import", authenticate, (req: Request, res: Response) => {
           : [userId, userId, entry.name, userId]
         )) as { id: string; version: number } | undefined;
 
+        const entryCategory = entry.category || category;
+        const entryPosition = entry.position ?? 0;
+
         if (existing) {
           const { encrypted, iv, authTag, salt } = encrypt(entry.value, MASTER_KEY);
           const newVersion = existing.version + 1;
           db.prepare(
             `UPDATE secrets SET encrypted_value = ?, iv = ?, auth_tag = ?, salt = ?, version = ?,
-             category = COALESCE(?, category), updated_at = datetime('now') WHERE id = ?`
-          ).run(encrypted, iv, authTag, salt, newVersion, category, existing.id);
+             category = COALESCE(?, category), position = ?, updated_at = datetime('now') WHERE id = ?`
+          ).run(encrypted, iv, authTag, salt, newVersion, entryCategory, entryPosition, existing.id);
 
           db.prepare(
             `INSERT INTO secret_versions (id, secret_id, encrypted_value, iv, auth_tag, salt, version, created_by)
@@ -192,9 +196,9 @@ router.post("/import", authenticate, (req: Request, res: Response) => {
           const { encrypted, iv, authTag, salt } = encrypt(entry.value, MASTER_KEY);
 
           db.prepare(
-            `INSERT INTO secrets (id, name, encrypted_value, iv, auth_tag, salt, category, created_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-          ).run(id, entry.name, encrypted, iv, authTag, salt, category ?? "general", userId);
+            `INSERT INTO secrets (id, name, encrypted_value, iv, auth_tag, salt, category, created_by, position)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(id, entry.name, encrypted, iv, authTag, salt, entryCategory ?? "general", userId, entryPosition);
 
           db.prepare(
             `INSERT INTO secret_versions (id, secret_id, encrypted_value, iv, auth_tag, salt, version, created_by)
@@ -233,7 +237,7 @@ router.get("/export", authenticate, (req: Request, res: Response) => {
 
   let rows: SecretRow[];
   if (userRole === "admin") {
-    rows = db.prepare("SELECT * FROM secrets ORDER BY name").all() as SecretRow[];
+    rows = db.prepare("SELECT * FROM secrets ORDER BY position, name").all() as SecretRow[];
   } else {
     rows = db.prepare(
       `SELECT DISTINCT s.* FROM secrets s
@@ -241,7 +245,7 @@ router.get("/export", authenticate, (req: Request, res: Response) => {
        LEFT JOIN secret_team_access sta ON s.id = sta.secret_id
        LEFT JOIN team_members tm ON tm.team_id = sta.team_id AND tm.user_id = ?
        WHERE s.created_by = ? OR sa.user_id IS NOT NULL OR tm.user_id IS NOT NULL
-       ORDER BY s.name`
+       ORDER BY s.position, s.name`
     ).all(userId, userId, userId) as SecretRow[];
   }
 
@@ -249,6 +253,7 @@ router.get("/export", authenticate, (req: Request, res: Response) => {
     name: row.name,
     value: decrypt(row.encrypted_value, row.iv, row.auth_tag, MASTER_KEY, row.salt),
     category: row.category,
+    position: row.position,
   }));
 
   logAudit(userId, "secret.export", "secret", null,
