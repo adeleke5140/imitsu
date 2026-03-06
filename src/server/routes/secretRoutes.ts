@@ -146,7 +146,8 @@ router.post("/import", authenticate, (req: Request, res: Response) => {
       for (const entry of entries) {
         if (!entry.name) continue;
 
-        // Find existing secret by name that the user owns or has write access to
+        // Find existing secret by name that the user owns, has write access to,
+        // or belongs to the target team (if importing with a team)
         const existing = db.prepare(
           `SELECT DISTINCT s.id, s.version FROM secrets s
            LEFT JOIN secret_access sa ON s.id = sa.secret_id AND sa.user_id = ?
@@ -156,9 +157,13 @@ router.post("/import", authenticate, (req: Request, res: Response) => {
              s.created_by = ?
              OR (sa.user_id IS NOT NULL AND sa.permission IN ('write', 'admin'))
              OR (tm.user_id IS NOT NULL AND sta.permission IN ('write', 'admin'))
+             ${teamId ? "OR sta.team_id = ?" : ""}
            )
            LIMIT 1`
-        ).get(userId, userId, entry.name, userId) as { id: string; version: number } | undefined;
+        ).get(...(teamId
+          ? [userId, userId, entry.name, userId, teamId]
+          : [userId, userId, entry.name, userId]
+        )) as { id: string; version: number } | undefined;
 
         if (existing) {
           const { encrypted, iv, authTag, salt } = encrypt(entry.value, MASTER_KEY);
@@ -178,8 +183,8 @@ router.post("/import", authenticate, (req: Request, res: Response) => {
           if (teamId) {
             db.prepare(
               `INSERT INTO secret_team_access (id, secret_id, team_id, permission, granted_by)
-               VALUES (?, ?, ?, 'read', ?)
-               ON CONFLICT(secret_id, team_id) DO NOTHING`
+               VALUES (?, ?, ?, 'write', ?)
+               ON CONFLICT(secret_id, team_id) DO UPDATE SET permission = 'write'`
             ).run(uuidv4(), existing.id, teamId, userId);
           }
         } else {
@@ -201,7 +206,7 @@ router.post("/import", authenticate, (req: Request, res: Response) => {
           if (teamId) {
             db.prepare(
               `INSERT INTO secret_team_access (id, secret_id, team_id, permission, granted_by)
-               VALUES (?, ?, ?, 'read', ?)`
+               VALUES (?, ?, ?, 'write', ?)`
             ).run(uuidv4(), id, teamId, userId);
           }
         }
