@@ -260,6 +260,7 @@ type ExportedSecret struct {
 	Name     string `json:"name"`
 	Value    string `json:"value"`
 	Category string `json:"category"`
+	Position int    `json:"position"`
 }
 
 func (c *Client) ExportSecrets() ([]ExportedSecret, error) {

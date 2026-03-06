@@ -307,7 +307,18 @@ func (m SecretsModel) handleExportKey(msg tea.KeyMsg) (SecretsModel, tea.Cmd) {
 			}
 
 			var sb strings.Builder
+			lastCategory := ""
 			for _, s := range secrets {
+				if s.Category != lastCategory {
+					if sb.Len() > 0 {
+						sb.WriteString("\n")
+					}
+					header := strings.ToUpper(s.Category[:1]) + s.Category[1:]
+					sb.WriteString("###########################\n")
+					sb.WriteString(fmt.Sprintf("### %s\n", header))
+					sb.WriteString("###########################\n")
+					lastCategory = s.Category
+				}
 				sb.WriteString(fmt.Sprintf("%s=%s\n", s.Name, s.Value))
 			}
 
