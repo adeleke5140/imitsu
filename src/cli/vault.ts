@@ -361,7 +361,7 @@ function parseEnvFile(content: string): { name: string; value: string }[] {
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
     }
-    if (name && value) entries.push({ name, value });
+    if (name) entries.push({ name, value });
   }
   return entries;
 }
