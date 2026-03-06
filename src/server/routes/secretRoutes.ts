@@ -146,7 +146,19 @@ router.post("/import", authenticate, (req: Request, res: Response) => {
       for (const entry of entries) {
         if (!entry.name || !entry.value) continue;
 
-        const existing = db.prepare("SELECT id, version FROM secrets WHERE name = ? AND created_by = ?").get(entry.name, userId) as { id: string; version: number } | undefined;
+        // Find existing secret by name that the user owns or has write access to
+        const existing = db.prepare(
+          `SELECT DISTINCT s.id, s.version FROM secrets s
+           LEFT JOIN secret_access sa ON s.id = sa.secret_id AND sa.user_id = ?
+           LEFT JOIN secret_team_access sta ON s.id = sta.secret_id
+           LEFT JOIN team_members tm ON tm.team_id = sta.team_id AND tm.user_id = ?
+           WHERE s.name = ? AND (
+             s.created_by = ?
+             OR (sa.user_id IS NOT NULL AND sa.permission IN ('write', 'admin'))
+             OR (tm.user_id IS NOT NULL AND sta.permission IN ('write', 'admin'))
+           )
+           LIMIT 1`
+        ).get(userId, userId, entry.name, userId) as { id: string; version: number } | undefined;
 
         if (existing) {
           const { encrypted, iv, authTag, salt } = encrypt(entry.value, MASTER_KEY);
