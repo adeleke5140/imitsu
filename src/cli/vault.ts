@@ -214,11 +214,13 @@ program
   .command("list")
   .alias("ls")
   .description("List all accessible secrets")
-  .action(async () => {
+  .option("-m, --mine", "Show only secrets you created")
+  .action(async (opts: { mine?: boolean }) => {
     try {
+      const endpoint = opts.mine ? "/api/secrets?mine=true" : "/api/secrets";
       const data = await api<{
         secrets: { id: string; name: string; category: string; version: number; updated_at: string }[];
-      }>("/api/secrets");
+      }>(endpoint);
 
       if (data.secrets.length === 0) {
         console.log(chalk.yellow("No secrets found"));
