@@ -1,6 +1,6 @@
 {
   "name": "imitsu",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Team secret manager",
   "type": "module",
   "main": "dist/cli/vault.js",
